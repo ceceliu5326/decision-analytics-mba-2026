@@ -88,6 +88,27 @@ def run_flip(
             rule="node_not_reachable",
         )
 
+    # A name can legitimately repeat under sibling decision branches (e.g. the
+    # same risk follows either action, just with action-dependent payoffs) --
+    # every occurrence downstream of decision_node must carry the flipped
+    # posterior, not just the first one _find_node happens to hit. Checked
+    # against the pre-copy tree so a genuine modeling inconsistency (two
+    # same-named nodes that don't actually represent the same uncertainty)
+    # is caught before any copying happens.
+    all_chance_occurrences = _find_all_nodes(decision_node, chance_name)
+    reference_probs = list(all_chance_occurrences[0].probs.base)
+    for occurrence in all_chance_occurrences[1:]:
+        if occurrence.probs is None or occurrence.probs.base is None or \
+                list(occurrence.probs.base) != reference_probs:
+            raise ValidationError(
+                f"Multiple ChanceNodes named '{chance_name}' exist under "
+                f"'{decision_name}', but their base probabilities don't match "
+                f"({reference_probs} vs {occurrence.probs.base if occurrence.probs else None}). "
+                "flip() treats same-named nodes as one shared uncertainty -- "
+                "if these are genuinely different risks, give them different names.",
+                node=chance_name, rule="ambiguous_chance_node",
+            )
+
     # ── 2. Priors ─────────────────────────────────────────────────────────────
     if chance_node.probs is None or chance_node.probs.base is None:
         raise ValidationError(
@@ -102,10 +123,17 @@ def run_flip(
 
     # ── 4. Test branch labels ─────────────────────────────────────────────────
     if test is None:
-        # EVPI: test outcomes are the true states themselves
+        # EVPI: test outcomes are the true states themselves. The new
+        # top-level branches only reveal which state holds -- any value or
+        # time on chance_node's own branches is already accumulated inside
+        # the copied decision subtree below (that same chance node, now
+        # forced, keeps its original branch value), so copying it here too
+        # would double-count it. Only correct by accident when that value
+        # happens to be 0, e.g. Freemark/Texaco's convention of attaching
+        # payoffs to LeafNodes instead of chance-node branches.
         test_labels  = [b.label for b in chance_node.branches]
-        test_values  = [b.value for b in chance_node.branches]
-        test_times   = [b.time  for b in chance_node.branches]
+        test_values  = [0] * n_states
+        test_times   = [0] * n_states
     else:
         if len(test.branches) != n_outcomes:
             raise ValidationError(
@@ -133,16 +161,19 @@ def run_flip(
         # Deep-copy the decision subtree independently (fresh event_ids)
         decision_copy = decision_node.copy(deep=True, independent=True)
 
-        # Find and update the chance node copy inside the decision subtree
-        from ._sensitivity import _find_node as _fn
-        chance_copy = _fn(decision_copy, chance_name)
-        if chance_copy is None:
+        # Update every occurrence of the chance node inside the copy, not
+        # just the first match -- a name shared across sibling decision
+        # branches (same risk, action-dependent payoff) means more than one
+        # distinct node instance needs the same posterior applied.
+        chance_copies = _find_all_nodes(decision_copy, chance_name)
+        if not chance_copies:
             raise ValidationError(
                 f"ChanceNode '{chance_name}' not found in decision subtree copy.",
                 rule="internal_error",
             )
-        chance_copy.name = inner_name
-        chance_copy.probs = Prob(base=posteriors[j])
+        for chance_copy in chance_copies:
+            chance_copy.name = inner_name
+            chance_copy.probs = Prob(base=posteriors[j])
 
         top_node.branches.append(Branch(
             label=test_labels[j],
@@ -266,6 +297,27 @@ def _is_reachable(root, target_name: str) -> bool:
     """Return True if a node named target_name exists in root's subtree."""
     from ._sensitivity import _find_node
     return _find_node(root, target_name) is not None
+
+
+def _find_all_nodes(root, name: str) -> list:
+    """Walk the tree (DAG-safe) and return every node whose .name matches,
+    in the order encountered. A name shared across sibling branches by two
+    distinct node objects (not just one object referenced twice) returns
+    each of them; a name reached twice via the same shared object returns
+    it only once, since the visited set is keyed by identity."""
+    found: list = []
+    _find_all_walk(root, name, set(), found)
+    return found
+
+
+def _find_all_walk(node, name: str, visited: set, found: list) -> None:
+    if node is None or id(node) in visited:
+        return
+    visited.add(id(node))
+    if node.name == name:
+        found.append(node)
+    for b in getattr(node, "branches", []):
+        _find_all_walk(b.child, name, visited, found)
 
 
 def _find_parent_branch(root, child_name: str) -> "Branch | None":
