@@ -1,0 +1,25 @@
+metric,current,recommended,recommended + upgrades
+economy limit,420,429,429
+business limit,120,139,139
+upgrades,False,False,True
+expected cost per flight (£),14261.0,9223.0,9068.0
+expected cost 90% band low (£),12682.0,8843.0,8707.0
+expected cost 90% band high (£),15816.0,9631.0,9470.0
+SD of cost per flight (£),13276.0,7467.0,7198.0
+P95 cost per flight (£),41550.0,23950.0,23200.0
+CVaR95 cost per flight (£),51147.0,34353.0,33098.0
+P(any bump),0.6819,0.9422,0.886
+P(business bump),0.3691,0.7807,0.7807
+economy bumps per flight,3.9118,9.4601,8.4253
+business bumps per flight,2.5016,12.4212,12.4212
+upgrades per flight,0.0,0.0,1.0347
+load factor,0.9745,0.9908,0.9929
+annual cost (£),20820755.0,13466065.0,13239455.0
+annual saving vs 420 / 120 (£),0.0,7354690.0,7581300.0
+annual saving 90% band low (£),0.0,5470169.0,5647209.0
+annual saving 90% band high (£),0.0,9191669.0,9448956.0
+P(saving > 0),,1.0,1.0
+passengers bumped per year,9364.0,31947.0,30436.0
+upgrades per year,0.0,0.0,1511.0
+break-even bump cost ×,,2.3228,2.4215
+"worst-case regret per flight, 7d (£)",15205.0,2561.0,2101.0
